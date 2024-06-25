@@ -13,16 +13,6 @@ parse_tcpdump_log() {
     /IP/ {
         timestamp = $1 " " $2
         protocol = "Unknown"
-        
-        # Check protocol
-        if ($7 == "IP") {
-            protocol = "IP"
-        } else if ($7 == "UDP") {
-            protocol = "UDP"
-        } else if ($7 == "TCP") {
-            protocol = "TCP"
-        }
-        
         src_ip_port = $3
         dst_ip_port = $5
 
@@ -33,9 +23,6 @@ parse_tcpdump_log() {
         # Split src_ip_port and dst_ip_port
         split(src_ip_port, src, ".")
         split(dst_ip_port, dst, ".")
-        
-        # Extract the domain info
-        domain_info = substr($0, index($0,$6))
 
         # Get source IP and port
         src_ip = src[1]"."src[2]"."src[3]"."src[4]
@@ -45,10 +32,21 @@ parse_tcpdump_log() {
         dst_ip = dst[1]"."dst[2]"."dst[3]"."dst[4]
         dst_port = dst[5]
 
-        # Trim any trailing colons or commas from ports
-        sub(/[^0-9]$/, "", src_port)
-        sub(/[^0-9]$/, "", dst_port)
+        # Extract the protocol
+        if ($6 ~ /Flags/) {
+            protocol = "TCP"
+        } else if ($6 ~ /^[0-9]+$/) {
+            protocol = "UDP"
+        } else if ($6 ~ /^[A-Za-z0-9]+$/) {
+            protocol = "IP"
+        } else if ($7 ~ /^[A-Za-z0-9]+\?$/) {
+            protocol = "DNS"
+        }
 
+        # Extract domain or info
+        domain_info = substr($0, index($0,$7))
+
+        # Print the formatted log line
         printf "%-20s %-18s %-15s %-18s %-19s %-10s %s\n", timestamp, src_ip, src_port, dst_ip, dst_port, protocol, domain_info
     }' "$input_log" > "$output_log"
 }

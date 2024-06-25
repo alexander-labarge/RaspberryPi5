@@ -1,16 +1,7 @@
 #!/bin/bash
 
-# router-config.conf
-SSID="Deathstar"
-WIFI_PASSWORD="P@ssword123!"
-IPV4_SUBNET="192.168.4"
-IPV4_GATEWAY="192.168.4.1/24"
-IPV6_SUBNET="fd00::"
-IPV6_GATEWAY="fd00::1/64"
-IPV4_DHCP_RANGE_START="192.168.4.3"
-IPV4_DHCP_RANGE_END="192.168.4.20"
-IPV6_DHCP_RANGE_START="fd00::2"
-IPV6_DHCP_RANGE_END="fd00::20"
+# Source the configuration file
+source ./router-config.conf
 
 # Update and install required packages
 sudo apt update
@@ -24,8 +15,9 @@ sudo systemctl start NetworkManager
 sudo nmcli connection delete "$SSID" || true
 sudo nmcli connection delete eth0 || true
 sudo nmcli connection delete wlan0 || true
+sudo nmcli connection delete eth1 || true
 
-# Ensure NetworkManager manages wlan0
+# Ensure NetworkManager manages wlan0 and eth1
 sudo tee /etc/NetworkManager/conf.d/10-globally-managed-devices.conf <<EOF
 [keyfile]
 unmanaged-devices=none
@@ -34,12 +26,14 @@ EOF
 # Reload NetworkManager configuration
 sudo systemctl reload NetworkManager
 
-# Enable wlan0 device
+# Enable wlan0 and eth1 devices
 sudo nmcli radio wifi on
 sudo nmcli device set wlan0 managed yes
+sudo nmcli device set eth1 managed yes
 
-# Bring up wlan0 device
+# Bring up wlan0 and eth1 devices
 sudo ip link set wlan0 up
+sudo ip link set eth1 up
 
 # Configure wlan0 (LAN interface) as an access point
 sudo nmcli connection add type wifi ifname wlan0 con-name "$SSID" autoconnect yes ssid "$SSID"
@@ -61,6 +55,13 @@ sudo nmcli connection modify eth0 ipv4.method auto
 sudo nmcli connection modify eth0 ipv6.method auto
 sudo nmcli connection up eth0
 
+# Configure eth1 (LAN interface) to use static IP
+sudo nmcli connection add type ethernet ifname eth1 con-name eth1
+sudo nmcli connection modify eth1 ipv4.addresses 192.168.4.2/24
+sudo nmcli connection modify eth1 ipv4.method manual
+sudo nmcli connection modify eth1 ipv6.method ignore
+sudo nmcli connection up eth1
+
 # Enable IP forwarding
 sudo sed -i 's|#net.ipv4.ip_forward=1|net.ipv4.ip_forward=1|' /etc/sysctl.conf
 sudo sed -i 's|#net.ipv6.conf.all.forwarding=1|net.ipv6.conf.all.forwarding=1|' /etc/sysctl.conf
@@ -70,10 +71,18 @@ sudo sysctl -p
 sudo iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
 sudo iptables -A FORWARD -i eth0 -o wlan0 -m state --state RELATED,ESTABLISHED -j ACCEPT
 sudo iptables -A FORWARD -i wlan0 -o eth0 -j ACCEPT
+sudo iptables -A FORWARD -i eth0 -o eth1 -m state --state RELATED,ESTABLISHED -j ACCEPT
+sudo iptables -A FORWARD -i eth1 -o eth0 -j ACCEPT
+sudo iptables -A FORWARD -i wlan0 -o eth1 -j ACCEPT
+sudo iptables -A FORWARD -i eth1 -o wlan0 -j ACCEPT
 
 sudo ip6tables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
 sudo ip6tables -A FORWARD -i eth0 -o wlan0 -m state --state RELATED,ESTABLISHED -j ACCEPT
 sudo ip6tables -A FORWARD -i wlan0 -o eth0 -j ACCEPT
+sudo ip6tables -A FORWARD -i eth0 -o eth1 -m state --state RELATED,ESTABLISHED -j ACCEPT
+sudo ip6tables -A FORWARD -i eth1 -o eth0 -j ACCEPT
+sudo ip6tables -A FORWARD -i wlan0 -o eth1 -j ACCEPT
+sudo ip6tables -A FORWARD -i eth1 -o wlan0 -j ACCEPT
 
 # Save iptables rules
 sudo sh -c "iptables-save > /etc/iptables/rules.v4"
@@ -94,11 +103,19 @@ sysctl -w net.ipv6.conf.all.forwarding=1
 iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
 iptables -A FORWARD -i eth0 -o wlan0 -m state --state RELATED,ESTABLISHED -j ACCEPT
 iptables -A FORWARD -i wlan0 -o eth0 -j ACCEPT
+iptables -A FORWARD -i eth0 -o eth1 -m state --state RELATED,ESTABLISHED -j ACCEPT
+iptables -A FORWARD -i eth1 -o eth0 -j ACCEPT
+iptables -A FORWARD -i wlan0 -o eth1 -j ACCEPT
+iptables -A FORWARD -i eth1 -o wlan0 -j ACCEPT
 
 # Set up ip6tables rules for IPv6
 ip6tables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
 ip6tables -A FORWARD -i eth0 -o wlan0 -m state --state RELATED,ESTABLISHED -j ACCEPT
 ip6tables -A FORWARD -i wlan0 -o eth0 -j ACCEPT
+ip6tables -A FORWARD -i eth0 -o eth1 -m state --state RELATED,ESTABLISHED -j ACCEPT
+ip6tables -A FORWARD -i eth1 -o eth0 -j ACCEPT
+ip6tables -A FORWARD -i wlan0 -o eth1 -j ACCEPT
+ip6tables -A FORWARD -i eth1 -o wlan0 -j ACCEPT
 
 # Logging network information
 sleep 5
